@@ -1,0 +1,412 @@
+---
+title: "Função de Janela - SQL"
+author: "Ícaro Pinheiro - Estatístico"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+# Objetivo
+
+Aplicar os conhecimentos sobre 'window function' = função de janela SQL.
+
+São aulas no youtube do canal hashtag treinamentos usadas para explorar o assunto. Abaixo temos as notas de aulas.
+
+```{r pacotes}
+library(tidyverse)
+library(sqldf)
+library(rmarkdown)
+```
+
+# Aula 1 - Intro
+
+As funções de janela operam em um conjunto de linhas chamado quadro de janela. Elas retornam um único valor para cada linha a partir da consulta subjacente.
+
+O dataset que vamos usar é a quantidade vendida por loja.
+
+```{r vendas}
+# DF DE VENDAS POR LOJA E REGIAO
+vendas <- 
+  data.frame(
+    id_loja = seq(1:13),
+    nome_loja = c(
+      "Botafogo Praia&Mar", "Lojas Vitoria", "Emporio Mineirinho", "Central Paulista", 
+      "Rio 90 graus", "Casa Flor & Anapolis", "Pampas & co", "Parana Papeis", 
+      "Amazonas Prime", "Para Bens", "Tintas Rio Branco", "Nordestemido Hall", "Cachoerinha Loft"
+    ),
+    regiao = c(
+      "Sudeste", "Sudeste", "Sudeste", "Sudeste", "Sudeste", 
+      "Sul", "Sul", "Sul", 
+      "Norte", "Norte", "Norte", "Nordeste", "Nordeste"
+    ),
+    qtd_vendida = c(
+      1800, 800, 2300, 1800, 700, 2100, 990, 2800, 4200, 3200, 1500, 1910, 2380
+    )
+  )
+
+rmarkdown::paged_table(vendas)
+```
+
+Um exemplo do que uma função de janela pode fazer. Usando a cláusula OVER(), podemos obter a soma total vendido.
+
+```html
+select
+  *,
+  sum(qtd_vendida) over() as total_vendido
+from vendas
+```
+
+```{r exercicio1}
+sqldf(
+  "
+  select *,
+  sum(qtd_vendida) over() as total_vendido
+  from vendas
+  "
+)
+```
+
+Agora temos uma nova coluna com o total vendido em quantidade.
+
+# Aula 2 - Percentual
+
+Nesta aula vamos fazer o cálculo percentual de vendas.
+
+Dentro da função *over* vamos inserir a opção *partition by*, significa quero o total vendido por região.
+
+Para obter o percentual, vamos montar a razão entre a quantidade vendida *(qtd_vendida)* e o total vendido por região *(sum(qtd_vendida) over(partition by regiao))*.
+
+```html
+select
+  *,
+  round(qtd_vendida / sum(qtd_vendida) over(partition by regiao), 2) as perc_venda_regiao
+from vendas
+order by id_loja
+```
+
+```{r exercicio2}
+# percentual de vendas por regiao
+sqldf(
+  "
+  select *,
+  round(qtd_vendida / sum(qtd_vendida) over(partition by regiao), 2) as perc_venda_regiao
+  from vendas
+  order by id_loja"
+)
+```
+
+# Aula 3 - Rank
+
+Como podemos criar um ranking das melhoras para as piores lojas em quantidade vendida na região sudeste?
+
+A função *row_number()* enumera as linhas e em casos de empate ela atribui uma ordem aleatória.
+
+Dentro da cláusula *over()*, podemos pedir para que as linhas sejam colocadas em ordem decrescente de acordo com a quantidade vendida.
+
+```html
+select 
+  *,
+  row_number() over(order by qtd_vendida desc) as rank1,
+  rank() over(order by qtd_vendida desc) as rank2,
+  dense_rank() over(order by qtd_vendida desc) as rank3
+from vendas
+where regiao = 'Sudeste'
+```
+
+```{r exercicio3}
+# criando rank de lojas da regiao sudeste
+sqldf(
+  "
+  select *,
+  row_number() over(order by qtd_vendida desc) as rank1,
+  rank() over(order by qtd_vendida desc) as rank2,
+  dense_rank() over(order by qtd_vendida desc) as rank3
+  from vendas
+  where regiao = 'Sudeste'
+  "
+)
+```
+
+E então, temos que a loja Empório Mineirinho é a loja que mais vendeu na região sudeste.
+
+# Aula 4 - Soma Móveis e Médias Móveis
+
+Para efetuar cálculos móveis, tipo média. Tem como?
+
+Agora temos uma tabela de faturamento em milhões por mês.
+
+Queremos obter a média móvel dos últimos 3 meses do faturamento.
+
+```{r df_datas}
+# faturamento por mes
+df_datas <- 
+  data.frame(
+      datafechamento = seq(as.Date("2020-01-01"), as.Date("2020-12-01"), by = "month"),
+      faturamentomm = c(8,10,6,9,5,4,7,11,9,12,11,10)
+      )
+```
+
+```html
+select 
+  *, 
+  round(
+  avg(faturamentomm) 
+  over(order by datafechamento rows between 2 preceding and current row), 3) as media_movel
+from df_datas
+```
+
+```{r exercicio4}
+# media movel dos ultimos 3 meses
+sqldf(
+  "
+  select *, 
+  round(avg(faturamentomm) over(order by datafechamento rows between 2 preceding and current row), 3) as media_movel
+  from df_datas
+  "
+)
+```
+
+Então temos que a opção *rows between 2 preceding and current row*, significa considerar a linha atual e as duas anteriores para o cálculo.
+
+E para a soma movel, a mesma situação, trocando apenas *avg* por *sum*.
+
+```html
+select
+  *, 
+  sum(faturamentomm) 
+  over(order by datafechamento rows between 2 preceding and current row) as soma_movel
+from df_datas
+```
+
+```{r exercicio5}
+# soma movel dos ultimos 3 meses
+sqldf(
+  "
+  select *, 
+  sum(faturamentomm) over(order by datafechamento rows between 2 preceding and current row) as soma_movel
+  from df_datas
+  "
+)
+```
+
+# Aula 5 - MOM / YOY
+
+Uma análise importante quando falamos de faturamento, é, comparativos entre meses e anos.
+
+Vamos iniciar com a MOM, mês contra mês.
+
+A função *lag()* captura essa informação, a syntax é lag(argumento1, argumento2, argumento3).
+
+-Argumento 1 = o nome da coluna ou uma expressão da qual o valor é obtido
+-Argumento 2 = o número de linhas a pular (deslocamento) acima
+-Argumento 3 = valor padrão a ser retornado se o valor armazenado obtido da linha acima estiver vazio
+
+```html
+select 
+  *, 
+  lag(faturamentomm, 1, 0) over(order by datafechamento) as fatmesanterior,
+  round((faturamentomm/lag(faturamentomm, 1, faturamentomm) over(order by datafechamento)-1), 3) as 'cresc_m-1'
+from df_datas
+```
+
+```{r exercicio6}
+# crescimento em relacao ao mes anterior - MOM
+sqldf(
+  "
+  select *, 
+  lag(faturamentomm, 1, 0) over(order by datafechamento) as fatmesanterior,
+  round((faturamentomm/lag(faturamentomm, 1, faturamentomm) over(order by datafechamento)-1), 3) as 'cresc_m-1'
+  from df_datas
+  "
+)
+```
+
+```{r df+}
+# adicionando mais dados para o calculo do YOY
+df_datas <- 
+  dplyr::bind_rows(
+    df_datas,
+    data.frame(
+      datafechamento = seq(as.Date("2021-01-01"), as.Date("2021-12-01"), by = "month"),
+      faturamentomm = c(7,11,9,12,11,10,8,10,6,9,5,4)
+    )
+  )
+```
+
+O Year Over Year (YOY) ou ano contra ano, vamos comparar o faturamento do mês com o mesmo mês do ano anterior.
+
+```html
+select 
+  *, 
+  lag(faturamentomm, 12, 0) over(order by datafechamento) as fatmesanterior,
+  round((faturamentomm/lag(faturamentomm, 12, faturamentomm) over(order by datafechamento)-1), 3) as 'cresc_m-12'
+from df_datas
+```
+
+```{r exercicio7}
+# crescimento em relacao ao ano anterior - YOY
+sqldf(
+  "
+  select *, 
+  lag(faturamentomm, 12, 0) over(order by datafechamento) as fatmesanterior,
+  round((faturamentomm/lag(faturamentomm, 12, faturamentomm) over(order by datafechamento)-1), 3) as 'cresc_m-12'
+  from df_datas
+  "
+)
+```
+
+IMPORTANTE!!!
+
+A função LEAD() é semelhante a LAG(). Enquanto LAG() acessa um valor armazenado em uma linha **acima**, LEAD() acessa um valor armazenado em uma linha **abaixo**.
+
+# Aula 6 - Total Acumulado
+
+E se precisarmos construir o total de faturamento acumulado?
+
+Para fazer isso, podemos substituir o número que colocamos antes dos *preceding* pela expressão *unbounded*.
+
+```html
+select 
+  *, 
+  sum(faturamentomm) 
+  over(order by datafechamento rows between unbounded preceding and current row) as acumulado,
+  round(
+  sum(faturamentomm) 
+  over(order by datafechamento rows between unbounded preceding and current row)/sum(faturamentomm) over(), 3) as perc_acum
+from df_datas
+```
+
+```{r exercicio8}
+# soma do faturamento acumulado com percentual
+sqldf(
+  "
+  select *, 
+  sum(faturamentomm) over(order by datafechamento rows between unbounded preceding and current row) as acumulado,
+  round(sum(faturamentomm) over(order by datafechamento rows between unbounded preceding and current row)/sum(faturamentomm) over(), 3) as perc_acum
+  from df_datas
+  "
+)
+```
+
+# Extras
+
+### 1ª loja + venda
+
+Qual é a loja campeã de vendas por região?
+
+A função que vamos usar é *first_value()*.
+
+```html
+select 
+  *
+from
+  (
+    select 
+      *,
+      first_value(nome_loja) over(partition by regiao order by qtd_vendida desc) as top_name
+    from vendas
+    order by 1
+  )
+where nome_loja = top_name
+```
+
+```{r exercicio9}
+# primeira loja com mais vendas por regiao
+sqldf(
+  "
+  select *
+  from
+  (
+    select *,
+    first_value(nome_loja) over(partition by regiao order by qtd_vendida desc) as top_name
+    from vendas
+    order by 1
+  )
+  where nome_loja = top_name
+  "
+)
+```
+
+### 2ª loja + venda
+
+Qual é a loja vice campeã de vendas por região?
+
+A função adequada é *nth_value()*.
+
+```html
+select *
+from
+  (
+    select *,
+    nth_value(nome_loja, 2) over(partition by regiao order by qtd_vendida desc) as top2_name
+    from vendas
+    order by 1
+  )
+where nome_loja = top2_name
+```
+
+```{r exercicio10}
+# segundo nome de loja com mais vendas por regiao
+sqldf(
+  "
+  select *
+  from
+  (
+    select *,
+    nth_value(nome_loja, 2) over(partition by regiao order by qtd_vendida desc) as top2_name
+    from vendas
+    order by 1
+  )
+  where nome_loja = top2_name
+  "
+)
+```
+
+### Média Móvel
+
+Agora, queremos obter a média móvel trimestral considerando m-1, m e m+1.
+
+Para definir a quantidade de linhas acima e abaixo que vamos considerar, além do *preceding* usamos o *following* para dizer até onde queremos ir.
+
+Observação: a expressão **0 following** é o mesmo que **current row**.
+
+```html
+select
+  *,
+  round(
+  avg(faturamentomm) 
+  over(order by datafechamento rows between 1 preceding and 1 following), 3) as media_movel
+from df_datas
+```
+
+```{r exercicio11}
+# media movel
+sqldf(
+  "
+  select  *, 
+  round(
+  avg(faturamentomm) 
+  over(order by datafechamento rows between 1 preceding and 1 following), 3) as media_movel
+from df_datas
+  "
+)
+```
+
+# Referência
+
+Os links das aulas da hashtag estão a seguir:
+
+Aula 1 - <https://www.youtube.com/watch?v=R61YRqiYDnA&ab_channel=HashtagPrograma%C3%A7%C3%A3o>
+
+Aula 2 - <https://www.youtube.com/watch?v=1VITejraXiQ>
+
+Aula 3 - <https://www.youtube.com/watch?v=7B8aK_hugmQ>
+
+Aula 4 - <https://www.youtube.com/watch?v=dxWLFv5EwfQ>
+
+Aula 5 - <https://www.youtube.com/watch?v=t2JeMk8wDgM>
+
+Aula 6 - <https://www.youtube.com/watch?v=rQOlbq_jC2c>
